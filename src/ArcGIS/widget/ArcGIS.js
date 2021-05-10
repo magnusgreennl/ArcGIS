@@ -377,7 +377,8 @@ require(dojoConfig, [], function() {
 				if (this.consoleLogging){
 					console.log(this.id + ".constructor");
 				}
-			},		
+			},
+			// Reset all variables and call _createTemplate
 			postCreate: function () {
 
 				if (this.consoleLogging){
@@ -399,14 +400,14 @@ require(dojoConfig, [], function() {
 				this._createTemplate();
 
 			},
-
+			/*
+			First called after postCreate.
+			Always calls resetSubscriptions
+			 */
 			update: function (obj, callback) {
-				var errorMessage = "";
-				
 				if (this.consoleLogging){
 					console.log(this.id + ".update");
-				}
-						
+				}	
 				this._contextObj = obj;
 
 				this._resetSubscriptions();
@@ -438,6 +439,10 @@ require(dojoConfig, [], function() {
 				 
 				}
 			},
+			/* Unscribes from objects in _handles and in case of contextObj subscribes to objects
+			(Un)Subscribe is the mx.data.subscribe method. Subscribe method returns handle that is stored to later unsubscribe to
+			Called by update
+			*/
 			_resetSubscriptions: function () {
 				if (this.consoleLogging){
 					console.log(this.id + ".resetSubscriptions");
@@ -517,7 +522,7 @@ require(dojoConfig, [], function() {
 				// use infotemplate for FeatureLayers
 				this.infotemplate = new esri.InfoTemplate();
 				
-				 this.infotemplate.setContent(lang.hitch(this,function(graphic){
+				this.infotemplate.setContent(lang.hitch(this,function(graphic){
 					// get actionlist in infowindow. Should only have one child, 'zoom to' link
 					var actionList = dojo.query(".actionList")[0];					 					
 					// destroy old buttons if existing
@@ -596,12 +601,19 @@ require(dojoConfig, [], function() {
 					  center: this._defaultPosition,
 					  zoom: this.defaultZoom,
 					  sliderStyle: "small",
-					  infoWindow : popup
+					  infoWindow : popup,
+					  showLabels : true //DV, must be set to true for labels to work according to documentation https://developers.arcgis.com/javascript/3/jshelp/tutorial_label_layer.html
 					 //,extent : ext
 				});
+
+				if (this.consoleLogging){
+					console.log("Map:");
+					console.dir(this._gisMap);
+				}
+				 
 				// after layer load, add the legend and toggle checkboxes for toggling layer visiblity
+				// Fires after specified layer has been added to the map. (addLayer(s))
 				this._gisMap.on('layers-add-result', lang.hitch(this, function (evt) {
-					
 					// get correct layer from layercache based on geometryType.
 					var queryLayer = this.layerArr.filter(lang.hitch(this,function( layer ) {
 
@@ -609,14 +621,17 @@ require(dojoConfig, [], function() {
 					}))[0];	
 
 					var layerResult = evt.layers;
-					
 					for (var i = 0; i < evt.layers.length; i++)  
 					{  
 						var result = (layerResult[i].error == undefined) ? "OK" : layerResult[i].error.message;  
 						console.log(" - " + layerResult[i].layer.id + ": " + result);  
 
+						//DV Edit where clause in LabelingInfo if necessary
+						// for(var j = 0; j <layerResult[i].layer.labelingInfo.length; j++) {
+						// 	// layerResult[i].layer.labelingInfo[j].where = layerResult[i].layer.labelingInfo[j].where.replace("   ", " ").replace("(","").replace(")","").trim();
+						// }
+
 						// only overrule default ArcGIS styling when asked for in Modeler and only for query layer
-						
 						if (this.enableCustomStyling && layerResult[i].layer.id === queryLayer.id) {
 
 							var uniqueValueRenderer = this._updateRenderer(layerResult[i].layer,"point");
@@ -627,7 +642,6 @@ require(dojoConfig, [], function() {
 						
 					// add layer-add-result handler to gismap
 					this._layerAddResultsEventHandler();
-					
 				}));
 	   
 				var toggle = new esri.dijit.BasemapToggle({
@@ -677,7 +691,7 @@ require(dojoConfig, [], function() {
 				if (this.layerArray.length > 0 && this.layerArr.length == 0){
 
 					for (var j = 0; j < this.layerArray.length; j++){
-						
+
 						layerObj = {
 							serverType : this.layerArray[j].layerServerType,
 							url : this.layerArray[j].layerURL,
@@ -699,12 +713,12 @@ require(dojoConfig, [], function() {
 							  }
 					   };
 					   if (layerObj.serverType === 'MapServer' || layerObj.serverType === 'FeatureServer'){
-										 						
+
 						layerSpecificURL = this._createLayerURL(layerSpecificURL,layerObj);
 
 							if (this.consoleLogging){
 								console.log(this._logNode + this._logNode + "Full URL (HostName + Layer URL): " + layerSpecificURL + " and options: ");
-								console.dir(this._logNode + layerOpts);
+								console.dir(layerOpts);
 							}
 					   }
 
@@ -744,15 +758,9 @@ require(dojoConfig, [], function() {
 								layerOpts.outFields = this.queryOutFieldsArr;
 								layerOpts.infoTemplate = this.infotemplate;
 
-								// if token available append to url, else could give token required errors in browser
-								if (this._token){
-									arcGisLayer = new esri.layers.FeatureLayer(layerSpecificURL + "?token=" + this._token, layerOpts);
-								} 
-								else {
-									arcGisLayer = new esri.layers.FeatureLayer(layerSpecificURL, layerOpts);
-									arcGisLayer.setOpacity(layerObj.opacity);
-								}
-	  
+								arcGisLayer = new esri.layers.FeatureLayer(layerSpecificURL, layerOpts);
+								arcGisLayer.setOpacity(layerObj.opacity);
+
 								if (!this.showAllObjectsInLayer) {
 									// enforce query definition on objects shown on map only if less than 1000 objects are chosen. Else operation becomes too heavy
 									if (this._referenceMxObjectsArr.length <= 1000){
@@ -761,6 +769,10 @@ require(dojoConfig, [], function() {
 								}
 
 							} 
+							if (this.consoleLogging){
+								console.log("Layer " + arcGisLayer.id);
+								console.dir(arcGisLayer);
+							}
 
 							// add own name to id, so can later on be retrieved in _refreshMap
 							arcGisLayer.id = layerObj.id;
@@ -777,9 +789,7 @@ require(dojoConfig, [], function() {
 				
 				// attach events to gismap and layer loading
 				this._setupEvents();
-
 				this._gisMap.addLayers(this.arcGisLayerArr);
-											
 			},
 			_refreshMap : function(objs){
 
@@ -788,7 +798,6 @@ require(dojoConfig, [], function() {
 				var layerID = gisMapIds.filter(lang.hitch(this,function( id ) {
 				  return id = this._queryLayerObj.id;														 																			   
 				}))[0];
-				  			
 				// only when reference DataView and Reference Entity have been set, narrow down objects by adding a queryDefinition
 				if (layerID){											 		  
 					var updateLayer = this._gisMap.getLayer(layerID);
@@ -807,7 +816,7 @@ require(dojoConfig, [], function() {
 					}
 					// applying querydefintion to layer which results in getting and setting extent on this._gisMap
 					this._getExtentFromQueryDef(this._queryLayerObj, this._queryDefinition);				
-				} 	
+				}
 			},
 			_createSimpleMarkerSymbol : function(markerSymbol){
 				switch (markerSymbol) {
@@ -1104,14 +1113,13 @@ require(dojoConfig, [], function() {
 				q.outFields = this.queryOutFieldsArr;
 				
 				// add where statement
-				q.where = queryDef; 
+				q.where = queryDef;
 
 				var identifyTaskLayerURL = "";
 							
 				identifyTaskLayerURL = this._createLayerURL(identifyTaskLayerURL,layerObj);
 
 				var qt = new esri.tasks.QueryTask(identifyTaskLayerURL);		
-					
 				qt.execute(q,lang.hitch(this, function(response) {
 						
 					if (response && response.features){
@@ -1238,6 +1246,9 @@ require(dojoConfig, [], function() {
 					dojo.query(".searchInputGroup input")[0].placeholder = "Search for address or place";
 				}
 			},
+			/*
+			Called by layers-add-result event handler
+			*/
 			_layerAddResultsEventHandler : function(){
 			
 				// set extent if a queryDefinition is given and a layer to be queried on is known
@@ -1259,7 +1270,6 @@ require(dojoConfig, [], function() {
 				} 
 
 				 if (this.enableLegend){
-
 					 // add the legend
 					var legend = new esri.dijit.Legend({
 						map: this._gisMap,
@@ -1267,61 +1277,7 @@ require(dojoConfig, [], function() {
 					}, this.legendDiv);
 
 					legend.startup();
-
-										  
-								   
-									
-						 
-
-												  
-												
-								 
-			  
-					  
-	   
-			 
-	 
-										   
-										 
-	   
-
-																			 
-																	  
-																			
-																					   
-																			
-																							 
-																			
-																	   
-																									 
-																		   
-																		   
-
-												   
-												  
-								 
-			  
-					  
-	   
-		
-
-												   
-												  
-							   
-					 
-					 
-					   
-					
-
-														  
-														   
-
-																					 
-
 				 }
-
-	 
-
 				if (this.enableToggleLayers){	
 					var subLayerArray = [],
 					layer = null,
@@ -1502,33 +1458,6 @@ require(dojoConfig, [], function() {
 				 }
 				
 			},
-															   
-	
-																			 
-
-								 
-	
-								   
-				 
-						  
-						
-			
-					
-						  
-				 
-								 
-	  
-			  
-
-													   
-					  
-																					
-
-													   
-
-									   
-
-	 
 			zoomRow : function(id,centerCoordinates,geometryType) {
 				
 				if (this.consoleLogging){
@@ -1650,6 +1579,10 @@ require(dojoConfig, [], function() {
 					
 				}
 			},
+			/* Set classes/styling on HTML Elements
+			Called by _createTemplate
+			Calls no new functions
+			 */
 			_injectVariableStyling : function(){
 				if (this.consoleLogging){
 					console.log(this.id + "._injectVariableStyling");	
@@ -1663,22 +1596,16 @@ require(dojoConfig, [], function() {
 					accSelectedCSS.innerHTML = ".claro .dijitAccordionTitleSelected { background-color: " + this.selectedColor + ";}";
 					accSelectedCSS.innerHTML += ".toggleTemplatePane .dijitAccordionContainer-child .dijitAccordionContainer-dijitContentPane { background-color: " + this.selectedColor + ";}";
 					document.body.appendChild(accSelectedCSS);
-					
-					
-									
-					var accHoverCSS = document.createElement("style");
 
+					var accHoverCSS = document.createElement("style");
 					accHoverCSS.type = "text/css";
 					accHoverCSS.innerHTML = ".claro .dijitAccordionInnerContainer:hover { background-color: " + this.customColor + ";}";
 					document.body.appendChild(accHoverCSS);
 					
 					var popupHeaderCSS = document.createElement("style");
-
 					popupHeaderCSS.type = "text/css";
 					popupHeaderCSS.innerHTML = ".esriPopup .titlePane { background-color: " + this.customColor + ";}";
 					document.body.appendChild(popupHeaderCSS);				
-					
-
 				}	
 				 // adjust dimensions of widget to widget settings
 				domStyle.set(this.domNode, {
@@ -1692,9 +1619,11 @@ require(dojoConfig, [], function() {
 						width: '95vw'
 					});	
 				}														  
-  
 			},
-			// Retrieves all objects related to the ArcGISDataView via XPath or DataSource MF and store in array in cache
+			/* Retrieves all objects related to the ArcGISDataView via XPath or DataSource MF or from DataView and store in array in cache
+			Depending on update Boolean, will call RefreshMap or LoadMap
+			Called by ResetSubscriptions (update=true) and _getHostNameMF (update=false)
+			*/
 			_getReferenceMxObjects : function(callback,update){
 				if (this.consoleLogging){
 					console.log(this.id + "._getReferenceMxObjects");
@@ -1768,7 +1697,7 @@ require(dojoConfig, [], function() {
 				// Scenario 3: loading object of DataView itself (ListenToGrid or single DataView)
 				else {
 					if (this.consoleLogging){
-						console.info(this._logNode + 'get object from DataView entity');
+						console.log(this._logNode + 'get object from DataView entity');
 					}
 					// only push into array if it exists, else an empty entry will be created, causing issues when iterating over this array later on
 					if (this._contextObj){
@@ -1820,7 +1749,9 @@ require(dojoConfig, [], function() {
 					});	
 				}	 
 			},
-			// creates all HTML elements needed, so placeholder for legend, drawing, map, toolbar, etc.
+			/* creates all HTML elements needed, so placeholder for legend, drawing, map, toolbar, etc.
+			Called by postCreate
+			Calls _injectVariableStyling() */
 			_createTemplate : function() {
 				if (this.consoleLogging){
 					console.log(this.id + "._createTemplate");
